@@ -7,6 +7,8 @@ export type BoardSession = {
   project: string
   cwd: string
   label: string
+  /** The desktop app's sidebar title, when the session runs there. */
+  title?: string
   state: BoardState
   since: number
   note: string

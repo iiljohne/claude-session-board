@@ -9,6 +9,7 @@ import type { BoardEvent, BoardSession, BoardState } from '../types'
 const PANE = 'session-board'
 const PANE_ARGS = { id: PANE, title: 'Sessions', columns: 48 }
 const REFRESH_MS = 5_000
+const TITLE_MS = 30_000
 const SHOW_ENDED_MS = 12 * 60 * 60 * 1000
 const SHOW_ANY_MS = 3 * 24 * 60 * 60 * 1000
 const QUIET_MS = 2 * 60 * 60 * 1000
@@ -107,6 +108,70 @@ function record($: EngineInterface, state: BoardState, note: string) {
   return writes
 }
 
+// The desktop app keeps a file per session holding its sidebar title, keyed by
+// the same id the engine gives this session. Its format is the app's own and
+// undocumented, so any miss here just leaves the board on project + prompt.
+let desktopFile = ''
+
+async function findDesktopFile($: EngineInterface, id: string) {
+  const local = await $.env.get('LOCALAPPDATA')
+  if (!local) return ''
+  const root = `${local}/Claude-Data`
+  if (!(await $.fs.exists(root))) return ''
+  const files: { path: string; mtimeMs: number }[] = []
+  for (const app of await $.fs.list(root)) {
+    if (app.kind !== 'dir' || !app.name.startsWith('claude_')) continue
+    const base = `${root}/${app.name}/claude-code-sessions`
+    if (!(await $.fs.exists(base))) continue
+    for (const a of await $.fs.list(base)) {
+      if (a.kind !== 'dir') continue
+      for (const b of await $.fs.list(`${base}/${a.name}`)) {
+        if (b.kind !== 'dir') continue
+        for (const f of await $.fs.list(`${base}/${a.name}/${b.name}`)) {
+          if (f.kind === 'file' && f.name.startsWith('local_') && f.name.endsWith('.json')) {
+            files.push({ path: `${base}/${a.name}/${b.name}/${f.name}`, mtimeMs: f.mtimeMs })
+          }
+        }
+      }
+    }
+  }
+  // The live session's file was touched last, so newest first usually finds it at once.
+  for (const file of files.sort((x, y) => y.mtimeMs - x.mtimeMs)) {
+    const text = await $.fs.read(file.path).catch(() => '')
+    if (!text.includes(id)) continue
+    try {
+      if ((JSON.parse(text) as { cliSessionId?: string }).cliSessionId === id) return file.path
+    } catch {
+      // Mid-write: try the next.
+    }
+  }
+  return ''
+}
+
+async function syncTitle($: EngineInterface) {
+  if (!me) return
+  if (!desktopFile) desktopFile = await findDesktopFile($, me.id)
+  if (!desktopFile) return
+  const text = await $.fs.read(desktopFile).catch(() => '')
+  let title: string | undefined
+  try {
+    title = (JSON.parse(text) as { title?: string }).title
+  } catch {
+    return
+  }
+  if (!title || title === me.title) return
+  me = { ...me, title }
+  writes = writes
+    .then(async () => {
+      if (!me) return
+      await $.fs.write(`${await boardDir($)}/${me.id}.json`, JSON.stringify(me, null, 1))
+      await refresh($)
+    })
+    .catch(() => undefined)
+}
+
+const nameOf = (s: BoardSession) => s.title || s.project
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const id = await $.session.id()
@@ -134,6 +199,8 @@ export const register: Register = on => {
 
     await record($, saved ? saved.state : 'your-turn', saved ? 'Resumed' : 'Started')
     $.clock.every(REFRESH_MS, () => refresh($))
+    void syncTitle($)
+    $.clock.every(TITLE_MS, () => syncTitle($))
     // The desktop app reports its sessions as not interactive, so open regardless;
     // with nothing attached the pane simply waits.
     void $.ui.open(PANE_ARGS)
@@ -196,7 +263,7 @@ export const register: Register = on => {
     const now = new Date(await $.clock.now())
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const rows = all
-      .flatMap(s => s.events.filter(ev => ev.at >= midnight).map(ev => ({ ...ev, who: `${s.project} · ${s.label || s.id.slice(0, 8)}` })))
+      .flatMap(s => s.events.filter(ev => ev.at >= midnight).map(ev => ({ ...ev, who: s.title || `${s.project} · ${s.label || s.id.slice(0, 8)}` })))
       .sort((a, b) => a.at - b.at)
     if (rows.length === 0) return { text: 'No session activity today yet.' }
     const lines = rows.map(r => `${time(r.at)}  ${HEADINGS[r.state].padEnd(19)}  ${r.who} — ${r.note}`)
@@ -211,7 +278,7 @@ export const register: Register = on => {
     const finished = others.filter(s => s.state === 'your-turn')
     if (waiting.length === 0 && finished.length === 0) return next(e)
     const { Text } = $.ui.resolve(e)
-    const names = (group: BoardSession[]) => group.map(s => s.project).join(', ')
+    const names = (group: BoardSession[]) => group.map(s => oneLine(nameOf(s), 28)).join(', ')
 
     return (
       <Text>
@@ -254,8 +321,8 @@ export const register: Register = on => {
                   <Box flexDirection="column">
                     <Text dimColor={state === 'ended'}>
                       {s.id === mine ? '▸ ' : '  '}
-                      <Text bold>{s.project}</Text>
-                      {s.label ? ` · ${oneLine(s.label, Math.max(10, width - s.project.length - 14))}` : ''}
+                      <Text bold>{oneLine(nameOf(s), Math.max(10, width - 12))}</Text>
+                      {!s.title && s.label ? ` · ${oneLine(s.label, Math.max(10, width - s.project.length - 14))}` : ''}
                       <Text dimColor> {ago(now - s.since)}{isQuiet ? ' (quiet)' : ''}</Text>
                     </Text>
                     <Text dimColor>    {oneLine(s.note, Math.max(10, width - 4))}</Text>

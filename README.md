@@ -9,7 +9,7 @@ Sessions are grouped:
 - **Working** — running; marked *(quiet)* after two hours with no activity
 - **Ended today** — closed within the last 12 hours
 
-The session you are in is marked with ▸.
+The session you are in is marked with ▸. In the desktop app each session shows under its sidebar title, so you can find it in the sidebar; a mod cannot switch sessions for you, and the app decides where the pane docks.
 
 ## Commands
 
