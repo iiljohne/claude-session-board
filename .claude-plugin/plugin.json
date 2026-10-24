@@ -1,0 +1,8 @@
+{
+  "name": "session-board",
+  "version": "0.1.0",
+  "description": "One board of every Claude Code session on this machine: which need you, which finished, which are working, plus a log of the day.",
+  "author": { "name": "John Cook" },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
