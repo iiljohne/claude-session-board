@@ -1,6 +1,6 @@
 # session-board
 
-One board of every Claude Code session on your machine, in a pane beside the chat. When you run many sessions at once, notifications flash and vanish; the board stays put and answers one question: **which sessions are waiting on me?**
+One board of every Claude Code session on your machine. It records quietly; open the pane with `/board` when you want it. When you run many sessions at once, notifications flash and vanish; the board stays put and answers one question: **which sessions are waiting on me?**
 
 Sessions are grouped:
 

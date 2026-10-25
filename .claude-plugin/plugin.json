@@ -1,6 +1,6 @@
 {
   "name": "session-board",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "One board of every Claude Code session on this machine: which need you, which finished, which are working, plus a log of the day.",
   "author": { "name": "John Cook" },
   "license": "MIT",

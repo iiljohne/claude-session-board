@@ -201,9 +201,6 @@ export const register: Register = on => {
     $.clock.every(REFRESH_MS, () => refresh($))
     void syncTitle($)
     $.clock.every(TITLE_MS, () => syncTitle($))
-    // The desktop app reports its sessions as not interactive, so open regardless;
-    // with nothing attached the pane simply waits.
-    void $.ui.open(PANE_ARGS)
 
     return next(e)
   })
@@ -268,24 +265,6 @@ export const register: Register = on => {
     if (rows.length === 0) return { text: 'No session activity today yet.' }
     const lines = rows.map(r => `${time(r.at)}  ${HEADINGS[r.state].padEnd(19)}  ${r.who} — ${r.note}`)
     return { text: `Today across ${new Set(rows.map(r => r.who)).size} sessions:\n\n${lines.join('\n')}` }
-  })
-
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const list = await read($, sessions)
-    const mine = await read($, selfId)
-    const others = list.filter(s => s.id !== mine && s.state !== 'ended')
-    const waiting = others.filter(s => s.state === 'needs-you')
-    const finished = others.filter(s => s.state === 'your-turn')
-    if (waiting.length === 0 && finished.length === 0) return next(e)
-    const { Text } = $.ui.resolve(e)
-    const names = (group: BoardSession[]) => group.map(s => oneLine(nameOf(s), 28)).join(', ')
-
-    return (
-      <Text>
-        {waiting.length > 0 && <Text color="warning" bold>{waiting.length} need you: {names(waiting)}  </Text>}
-        {finished.length > 0 && <Text color="success">{finished.length} finished: {names(finished)}</Text>}
-      </Text>
-    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
